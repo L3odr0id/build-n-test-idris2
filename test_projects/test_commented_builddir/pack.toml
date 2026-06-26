@@ -1,0 +1,10 @@
+[custom.all.test_lib]
+type = "local"
+path = "."
+ipkg = "test_lib.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.test_lib-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"

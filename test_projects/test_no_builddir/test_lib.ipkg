@@ -1,0 +1,5 @@
+package test_lib
+version = 0.1.0
+authors = "L3odr0id"
+modules = Test_lib
+sourcedir = "src"

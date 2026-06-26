@@ -1,0 +1,90 @@
+---
+name: Test workflow
+
+on:
+  push:
+  schedule:
+    - cron: "0 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  # Build test libs with different configs
+  build-n-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        ipkg_path:
+          - test_projects/test_no_builddir/test_lib.ipkg
+          - test_projects/test_has_builddir/test_lib.ipkg
+          - test_projects/test_commented_builddir/test_lib.ipkg
+    uses: L3odr0id/idris2-actions/.github/workflows/build-and-test.yml@master
+    with:
+      ipkg_path: ${{ matrix.ipkg_path }}
+
+  # Build root project, restore it and run
+  build-root-for-cache:
+    uses: L3odr0id/idris2-actions/.github/workflows/build-and-test.yml@master
+
+  run-root-cached:
+    needs: build-root-for-cache
+    runs-on: ubuntu-latest
+    container: ghcr.io/stefan-hoeck/idris2-pack:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.build-root-for-cache.outputs.variants) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Restore the cached build
+        id: restore
+        uses: L3odr0id/idris2-actions/.github/actions/restore-cache@master
+        with:
+          mode: ${{ matrix.variant.mode }}
+          cache_key: ${{ matrix.variant.cache_key }}
+          project_dir: ${{ needs.build-root-for-cache.outputs.project_dir }}
+          build_dir: ${{ needs.build-root-for-cache.outputs.build_dir }}
+
+      - name: Run the package
+        if: steps.restore.outputs.cache-hit == 'true'
+        working-directory: ${{ needs.build-root-for-cache.outputs.project_dir }}
+        env:
+          PACKAGE: ${{ needs.build-root-for-cache.outputs.package }}
+        run: pack run "$PACKAGE"
+
+      - name: Fail on cache miss
+        if: steps.restore.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache missed :("
+          exit 1
+
+  # Single-variant usage example
+  run-root-single-variant:
+    needs: build-root-for-cache
+    runs-on: ubuntu-latest
+    container: ghcr.io/stefan-hoeck/idris2-pack:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Restore the first variant build
+        id: restore
+        uses: L3odr0id/idris2-actions/.github/actions/restore-cache@master
+        with:
+          mode: ${{ fromJSON(needs.build-root-for-cache.outputs.variants)[0].mode }}
+          cache_key: ${{ fromJSON(needs.build-root-for-cache.outputs.variants)[0].cache_key }}
+          project_dir: ${{ needs.build-root-for-cache.outputs.project_dir }}
+          build_dir: ${{ needs.build-root-for-cache.outputs.build_dir }}
+
+      - name: Run the package
+        working-directory: ${{ needs.build-root-for-cache.outputs.project_dir }}
+        env:
+          PACKAGE: ${{ needs.build-root-for-cache.outputs.package }}
+        run: pack run "$PACKAGE"
